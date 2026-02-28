@@ -6,21 +6,7 @@ file(GLOB_RECURSE SOURCE_FILES src/*.c src/*.h)
 
 set(CMAKE_C_STANDARD 23) # Enable the C23 standard
 
-add_executable(git ${SOURCE_FILES}
-        src/utils/file/file.h
-        src/utils/file/file.c
-        src/utils/string/string.h
-        src/utils/string/string.c
-        src/utils/compression/compression.h
-        src/utils/compression/compression.c
-        src/commands/commands.h
-        src/constants.h
-        src/commands/commands.c
-        src/utils/directory/directory.h
-        src/utils/directory/directory.c
-        src/objects/object.h
-        src/objects/object.c
-)
+add_executable(git ${SOURCE_FILES})
 
 if(WIN32)
     # Configure zlib paths for Windows

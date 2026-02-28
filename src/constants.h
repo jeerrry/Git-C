@@ -24,6 +24,12 @@
 #define FILE_BUFFER_SIZE 4096
 #define DIRECTORY_PERMISSION 0755
 
+/* Windows mkdir takes only one argument — shim to match POSIX signature */
+#ifdef _WIN32
+#include <direct.h>
+#define mkdir(path, mode) _mkdir(path)
+#endif
+
 /* All diagnostic output goes through this macro.
  * Keeps error output on stderr consistently across the codebase. */
 #define GIT_ERR(...) fprintf(stderr, __VA_ARGS__)
