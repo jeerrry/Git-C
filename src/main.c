@@ -2,7 +2,7 @@
  * main.c
  *
  * CLI entry point for the git implementation.
- * Dispatches subcommands (init, cat-file, hash-object) to their handlers.
+ * Dispatches subcommands (init, cat-file, hash-object, ls-tree) to their handlers.
  * Uses a linear if-chain for dispatch — will be replaced with a command
  * registry table once more commands are added (ls-tree, write-tree, etc.).
  */
@@ -34,6 +34,16 @@ int main(const int argc, char *argv[]) {
         }
         if (strcmp(argv[2], "-p") == 0) {
             return cat_file(argv[3]);
+        }
+    }
+
+    if (strcmp(command, "ls-tree") == 0) {
+        if (argc < 4) {
+            fprintf(stderr, "Usage: ./your_program.sh ls-tree --name-only <sha1>\n");
+            return 1;
+        }
+        if (strcmp(argv[2], "--name-only") == 0) {
+            return ls_tree(argv[3]);
         }
     }
 

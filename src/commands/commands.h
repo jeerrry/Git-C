@@ -34,4 +34,16 @@ int cat_file(const char *sha1);
  */
 int hash_object(const char *path);
 
+/*
+ * Lists the contents of a git tree object.
+ *
+ * Reads and decompresses the tree object, then parses the binary
+ * entry format (<mode> <name>\0<20-byte SHA>) and prints each
+ * entry name to stdout, one per line.
+ *
+ * @param sha1  40-character hex SHA-1 hash identifying the tree object.
+ * @return      0 on success, 1 on failure.
+ */
+int ls_tree(const char *sha1);
+
 #endif /* COMMANDS_H */

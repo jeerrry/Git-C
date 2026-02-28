@@ -1,7 +1,7 @@
 /*
  * commands.c
  *
- * Implements the core git subcommands: init, cat-file, hash-object.
+ * Implements the core git subcommands: init, cat-file, hash-object, ls-tree.
  * Each function returns 0 on success, 1 on failure.
  *
  * hash_object uses the goto-cleanup pattern to ensure all heap
@@ -175,4 +175,55 @@ cleanup:
     free(compressed_data);
 
     return ret;
+}
+
+int ls_tree(const char *sha1) {
+    unsigned long uncompressed_size;
+    long compressed_size;
+
+    char *compressed_file = read_git_blob_file(sha1, &compressed_size);
+    if (compressed_file == NULL) {
+        GIT_ERR("Error reading object %s\n", sha1);
+        return 1;
+    }
+
+    unsigned char *decompressed_file = decompress_data((unsigned char *)compressed_file, compressed_size, &uncompressed_size);
+    free(compressed_file);
+    if (decompressed_file == NULL) {
+        GIT_ERR("Error decompressing object %s\n", sha1);
+        return 1;
+    }
+
+    /* Skip the "tree <size>\0" header — same pattern as cat_file */
+    unsigned char *header_end = memchr(decompressed_file, '\0', uncompressed_size);
+    if (header_end == NULL) {
+        GIT_ERR("Malformed tree object header in %s\n", sha1);
+        free(decompressed_file);
+        return 1;
+    }
+
+    unsigned char *pos = header_end + 1;
+    unsigned char *end = decompressed_file + uncompressed_size;
+
+    /* Each entry: <mode> <name>\0<20-byte binary SHA>
+     * We find the space (skip mode), then find the \0 (that's the name),
+     * print it, and jump 20 bytes past \0 to reach the next entry. */
+    while (pos < end) {
+        /* Skip mode — advance past the space separator */
+        unsigned char *space = memchr(pos, ' ', (size_t)(end - pos));
+        if (space == NULL) break;
+
+        /* Name runs from after the space to the next null byte */
+        unsigned char *name_start = space + 1;
+        unsigned char *name_end = memchr(name_start, '\0', (size_t)(end - name_start));
+        if (name_end == NULL) break;
+
+        printf("%.*s\n", (int)(name_end - name_start), name_start);
+
+        /* Jump past the null byte and the 20-byte binary SHA */
+        pos = name_end + 1 + 20;
+    }
+
+    free(decompressed_file);
+    return 0;
 }
