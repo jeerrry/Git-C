@@ -29,4 +29,16 @@ void slice_str(const char *str, char *buffer, size_t start, size_t end);
  */
 char *hex_to_string(const unsigned char *buffer, size_t buffer_size);
 
+/*
+ * Converts a hex string to raw binary bytes (inverse of hex_to_string).
+ *
+ * Tree entries store SHA-1 as 20 raw bytes, not 40-char hex.
+ * This function converts e.g. "a3f2" → {0xa3, 0xf2}.
+ *
+ * @param hex_str    Hex string (must have even length).
+ * @param out_len    Output: set to number of bytes written.
+ * @return           Heap-allocated byte buffer (caller must free), or NULL.
+ */
+unsigned char *hex_string_to_bytes(const char *hex_str, size_t *out_len);
+
 #endif /* STRING_H */

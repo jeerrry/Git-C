@@ -46,4 +46,16 @@ int hash_object(const char *path);
  */
 int ls_tree(const char *sha1);
 
+/*
+ * Creates a tree object from the current working directory.
+ *
+ * Recursively scans directories (skipping .git), creates blob objects
+ * for files, builds child trees for subdirectories, and writes the
+ * resulting tree object to .git/objects/.
+ * Prints the 40-character hex hash to stdout.
+ *
+ * @return  0 on success, 1 on failure.
+ */
+int write_tree(void);
+
 #endif /* COMMANDS_H */
