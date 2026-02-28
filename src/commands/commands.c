@@ -27,12 +27,13 @@
 #include <openssl/sha.h>
 
 #include "../constants.h"
+#include "../objects/object.h"
 #include "../utils/file/file.h"
 #include "../utils/compression/compression.h"
 #include "../utils/string/string.h"
 #include "../utils/directory/directory.h"
 
-int int_git(void) {
+int init_git(void) {
     if (mkdir(GIT_ROOT_DIR, DIRECTORY_PERMISSION) == -1
         || mkdir(GIT_REFS_DIR, DIRECTORY_PERMISSION) == -1
         || mkdir(GIT_OBJECTS_DIR, DIRECTORY_PERMISSION) == -1) {
@@ -54,39 +55,11 @@ int int_git(void) {
 }
 
 int cat_file(const char *sha1) {
-    unsigned long uncompressed_size;
-    long compressed_size;
+    GitObject obj;
+    if (object_read(sha1, &obj) != 0) return 1;
 
-    char *compressed_file = read_git_blob_file(sha1, &compressed_size);
-    if (compressed_file == NULL) {
-        GIT_ERR("Error reading object %s\n", sha1);
-        return 1;
-    }
-
-    unsigned char *decompressed_file = decompress_data((unsigned char *)compressed_file, compressed_size, &uncompressed_size);
-    if (decompressed_file == NULL) {
-        GIT_ERR("Error decompressing object %s\n", sha1);
-        free(compressed_file);
-        return 1;
-    }
-
-    /* Git objects are formatted as "<type> <size>\0<content>".
-     * Find the null separator to skip the header and print the body. */
-    unsigned char *header_end = memchr(decompressed_file, '\0', uncompressed_size);
-    if (header_end == NULL) {
-        GIT_ERR("Malformed git object header in %s\n", sha1);
-        free(compressed_file);
-        free(decompressed_file);
-        return 1;
-    }
-
-    unsigned char *body_content = header_end + 1;
-    const unsigned long body_size = uncompressed_size - (body_content - decompressed_file);
-    printf("%.*s", (int) body_size, body_content);
-
-    free(compressed_file);
-    free(decompressed_file);
-
+    printf("%.*s", (int)obj.body_size, obj.body);
+    free(obj.raw);
     return 0;
 }
 
@@ -216,32 +189,11 @@ int hash_object(const char *path) {
 }
 
 int ls_tree(const char *sha1) {
-    unsigned long uncompressed_size;
-    long compressed_size;
+    GitObject obj;
+    if (object_read(sha1, &obj) != 0) return 1;
 
-    char *compressed_file = read_git_blob_file(sha1, &compressed_size);
-    if (compressed_file == NULL) {
-        GIT_ERR("Error reading object %s\n", sha1);
-        return 1;
-    }
-
-    unsigned char *decompressed_file = decompress_data((unsigned char *)compressed_file, compressed_size, &uncompressed_size);
-    free(compressed_file);
-    if (decompressed_file == NULL) {
-        GIT_ERR("Error decompressing object %s\n", sha1);
-        return 1;
-    }
-
-    /* Skip the "tree <size>\0" header — same pattern as cat_file */
-    unsigned char *header_end = memchr(decompressed_file, '\0', uncompressed_size);
-    if (header_end == NULL) {
-        GIT_ERR("Malformed tree object header in %s\n", sha1);
-        free(decompressed_file);
-        return 1;
-    }
-
-    unsigned char *pos = header_end + 1;
-    unsigned char *end = decompressed_file + uncompressed_size;
+    unsigned char *pos = obj.body;
+    unsigned char *end = obj.body + obj.body_size;
 
     /* Tree entries are packed as: <mode> <name>\0<20-byte binary SHA>
      * with no separator between entries — the only way to find entry
@@ -260,7 +212,7 @@ int ls_tree(const char *sha1) {
         pos = name_end + 1 + 20;
     }
 
-    free(decompressed_file);
+    free(obj.raw);
     return 0;
 }
 

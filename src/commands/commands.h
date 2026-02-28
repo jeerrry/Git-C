@@ -11,7 +11,7 @@
 
 /* Initializes a new git repository by creating .git/, .git/refs/,
  * .git/objects/, and writing the default HEAD reference. */
-int int_git(void);
+int init_git(void);
 
 /*
  * Reads and prints the content of a git blob object.

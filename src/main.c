@@ -24,7 +24,7 @@ int main(const int argc, char *argv[]) {
     const char *command = argv[1];
 
     if (strcmp(command, "init") == 0) {
-        return int_git();
+        return init_git();
     }
 
     if (strcmp(command, "cat-file") == 0) {

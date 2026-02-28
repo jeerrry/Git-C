@@ -18,6 +18,8 @@ add_executable(git ${SOURCE_FILES}
         src/commands/commands.c
         src/utils/directory/directory.h
         src/utils/directory/directory.c
+        src/objects/object.h
+        src/objects/object.c
 )
 
 if(WIN32)
