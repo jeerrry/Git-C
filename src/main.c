@@ -39,6 +39,11 @@ static int cmd_write_tree(int argc, char **argv) {
     return write_tree();
 }
 
+static int cmd_commit_tree(int argc, char **argv) {
+    (void)argc;
+    return commit_tree(argv[2], argv[4], argv[6]);
+}
+
 typedef struct {
     const char *name;      /* command name to match against argv[1] */
     int min_argc;          /* minimum argc required */
@@ -53,6 +58,7 @@ static const Command commands[] = {
     { "hash-object", 4, "-w",          "hash-object -w <file>",        cmd_hash_object },
     { "ls-tree",     4, "--name-only", "ls-tree --name-only <sha1>",   cmd_ls_tree },
     { "write-tree",  2, NULL,          NULL,                            cmd_write_tree },
+    { "commit-tree", 7, NULL,          "commit-tree <tree> -p <parent> -m <msg>", cmd_commit_tree },
 };
 
 static const size_t num_commands = sizeof(commands) / sizeof(commands[0]);

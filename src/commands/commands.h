@@ -58,4 +58,18 @@ int ls_tree(const char *sha1);
  */
 int write_tree(void);
 
+/*
+ * Creates a commit object linking a tree to its parent commit.
+ *
+ * Writes a commit object containing the tree SHA, parent SHA,
+ * author/committer metadata, and message to .git/objects/.
+ * Prints the 40-character hex hash to stdout.
+ *
+ * @param tree_sha    40-char hex SHA of the tree object.
+ * @param parent_sha  40-char hex SHA of the parent commit.
+ * @param message     Commit message string.
+ * @return            0 on success, 1 on failure.
+ */
+int commit_tree(const char *tree_sha, const char *parent_sha, const char *message);
+
 #endif /* COMMANDS_H */
