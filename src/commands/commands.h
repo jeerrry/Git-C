@@ -1,12 +1,37 @@
-//
-// Created by Jerry on 11/23/2024.
-//
+/*
+ * commands.h
+ *
+ * Git command implementations. Each function corresponds to a git
+ * subcommand and returns 0 on success, 1 on failure.
+ * Errors are reported to stderr.
+ */
 
 #ifndef COMMANDS_H
 #define COMMANDS_H
 
-int int_git();
-int cat_file(const char* path);
-int hash_object(const char* path);
+/* Initializes a new git repository by creating .git/, .git/refs/,
+ * .git/objects/, and writing the default HEAD reference. */
+int int_git(void);
 
-#endif //COMMANDS_H
+/*
+ * Reads and prints the content of a git blob object.
+ *
+ * @param sha1  40-character hex SHA-1 hash identifying the object.
+ *              Resolved to .git/objects/<first 2 chars>/<remaining 38>.
+ * @return      0 on success, 1 on failure.
+ */
+int cat_file(const char *sha1);
+
+/*
+ * Creates a git blob object from a file and writes it to the object store.
+ *
+ * Constructs "blob <size>\0<content>", computes its SHA-1 hash,
+ * compresses with zlib, and writes to .git/objects/.
+ * Prints the 40-character hex hash to stdout.
+ *
+ * @param path  Path to the file to hash.
+ * @return      0 on success, 1 on failure.
+ */
+int hash_object(const char *path);
+
+#endif /* COMMANDS_H */

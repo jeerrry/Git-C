@@ -1,30 +1,47 @@
-//
-// Created by Jerry on 11/23/2024.
-//
+/*
+ * compression.c
+ *
+ * Zlib compression/decompression wrappers with automatic buffer management.
+ * Git objects are always zlib-compressed on disk.
+ */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <zlib.h>
 
+#include "../../constants.h"
+
 unsigned char *decompress_data(const unsigned char *compressed_data, const unsigned long compressed_data_size,
                                unsigned long *decompressed_data_size) {
-    *decompressed_data_size = compressed_data_size * 4;
-    unsigned char *decompressed_data = malloc(*decompressed_data_size);
-    if (decompressed_data == NULL) {
-        printf("malloc failed\n");
+    /* Start with 8x the compressed size as an initial estimate.
+     * If the data was highly compressed (common for text), the buffer
+     * may be too small — uncompress returns Z_BUF_ERROR in that case.
+     * We retry with doubled buffer size until it fits or a real error occurs. */
+    uLongf dest_size = compressed_data_size * 8;
 
-        return NULL;
-    }
+    while (1) {
+        unsigned char *decompressed_data = malloc(dest_size);
+        if (decompressed_data == NULL) {
+            GIT_ERR("malloc failed\n");
+            return NULL;
+        }
 
-    const int result = uncompress(decompressed_data, decompressed_data_size, compressed_data, compressed_data_size);
-    if (result != Z_OK) {
-        printf("uncompress failed\n");
+        uLongf out_size = dest_size;
+        int result = uncompress(decompressed_data, &out_size, compressed_data, compressed_data_size);
+        if (result == Z_OK) {
+            *decompressed_data_size = out_size;
+            return decompressed_data;
+        }
+
         free(decompressed_data);
 
-        return NULL;
-    }
+        if (result != Z_BUF_ERROR) {
+            GIT_ERR("uncompress failed: %d\n", result);
+            return NULL;
+        }
 
-    return decompressed_data;
+        dest_size *= 2;
+    }
 }
 
 unsigned char *compress_data(const unsigned char *file_data, unsigned long file_data_size,
@@ -36,17 +53,14 @@ unsigned char *compress_data(const unsigned char *file_data, unsigned long file_
     uLongf max_compressed_data_size = compressBound(file_data_size);
     unsigned char *compressed_data = malloc(max_compressed_data_size);
     if (!compressed_data) {
-        printf("malloc failed\n");
-        free(compressed_data);
-
+        GIT_ERR("malloc failed\n");
         return NULL;
     }
 
     int result = compress(compressed_data, &max_compressed_data_size, file_data, file_data_size);
     if (result != Z_OK) {
-        printf("compress failed\n");
+        GIT_ERR("compress failed: %d\n", result);
         free(compressed_data);
-
         return NULL;
     }
 

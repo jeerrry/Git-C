@@ -1,6 +1,10 @@
-//
-// Created by Jerry on 11/23/2024.
-//
+/*
+ * file.c
+ *
+ * File I/O utilities for reading, writing, and path manipulation.
+ * Handles the git object store path convention where SHA-1 hashes
+ * are split into a 2-char directory prefix and 38-char filename.
+ */
 
 #ifdef _WIN32
 #include <direct.h>
@@ -16,57 +20,52 @@
 #include "../../constants.h"
 #include "../string/string.h"
 
-char *get_file_path(const char *file_name) {
-    const size_t sha_length = strlen(file_name);
+char *get_file_path(const char *sha1_hex) {
+    const size_t sha_length = strlen(sha1_hex);
 
-    // Allocate enough memory for "xx/xxxxxxxxxx..." + null terminator
-    char *file_path = malloc(sha_length + 3); // +2 for "xx/" and +1 for '\0'
+    /* Git shards objects by the first two hex digits to avoid
+     * filesystem limits on directory entry counts (e.g., ext4 ~10M).
+     * Result format: "ab/cdef0123..." from "abcdef0123..." */
+    char *file_path = malloc(sha_length + 2); /* +1 for '/' inserted, +1 for '\0' */
     if (file_path == NULL) {
-        perror("malloc failed");
+        GIT_ERR("malloc failed\n");
         return NULL;
     }
 
-    // Copy the first 2 characters to form the directory name
-    strncpy(file_path, file_name, 2); // First 2 characters
-    file_path[2] = '/';              // Add the separator '/'
+    strncpy(file_path, sha1_hex, 2);
+    file_path[2] = '/';
+    strcpy(file_path + 3, sha1_hex + 2);
 
-    // Copy the remaining part of the hash as the file name
-    strcpy(file_path + 3, file_name + 2); // Rest of the hash string
-
-    return file_path; // Caller must free this memory
+    return file_path;
 }
 
 int split_file_path(const char *file_path, char **directory, char **file_name) {
     const char *last_slash = strrchr(file_path, '/');
     if (last_slash == NULL) {
-        printf("File path is invalid\n");
+        GIT_ERR("File path is invalid\n");
         return 1;
     }
 
-    // Calculate lengths
     size_t directory_len = last_slash - file_path;
     size_t file_name_len = strlen(file_path) - directory_len - 1;
 
-    // Allocate memory for directory
     *directory = (char *)malloc(directory_len + 1);
     if (*directory == NULL) {
-        perror("Failed to allocate memory for directory");
+        GIT_ERR("Failed to allocate memory for directory\n");
         return 1;
     }
 
-    // Allocate memory for file name
     *file_name = (char *)malloc(file_name_len + 1);
     if (*file_name == NULL) {
-        perror("Failed to allocate memory for file name");
-        free(directory); // Free previously allocated memory
+        GIT_ERR("Failed to allocate memory for file name\n");
+        free(*directory);
+        *directory = NULL;
         return 1;
     }
 
-    // Copy directory
     strncpy(*directory, file_path, directory_len);
     (*directory)[directory_len] = '\0';
 
-    // Copy file name
     strncpy(*file_name, last_slash + 1, file_name_len);
     (*file_name)[file_name_len] = '\0';
 
@@ -76,12 +75,12 @@ int split_file_path(const char *file_path, char **directory, char **file_name) {
 char *read_file(const char *file_absolute_path, long *file_size) {
     FILE *target_file = fopen(file_absolute_path, "rb");
     if (target_file == NULL) {
-        printf("Error opening file %s\n", file_absolute_path);
+        GIT_ERR("Error opening file %s\n", file_absolute_path);
         return NULL;
     }
 
     if (fseek(target_file, 0, SEEK_END) != 0) {
-        printf("Error seeking end of file %s\n", file_absolute_path);
+        GIT_ERR("Error seeking end of file %s\n", file_absolute_path);
         fclose(target_file);
         return NULL;
     }
@@ -89,27 +88,23 @@ char *read_file(const char *file_absolute_path, long *file_size) {
     const long target_file_size = ftell(target_file);
     char *file_content = malloc(target_file_size + 1);
     if (file_content == NULL) {
-        printf("Error allocating memory for file content\n");
+        GIT_ERR("Error allocating memory for file content\n");
         fclose(target_file);
-        free(file_content);
-
         return NULL;
     }
 
     if (fseek(target_file, 0, SEEK_SET) != 0) {
-        printf("Error seeking end of file %s\n", file_absolute_path);
+        GIT_ERR("Error seeking to beginning of file %s\n", file_absolute_path);
         fclose(target_file);
         free(file_content);
-
         return NULL;
     }
 
     size_t file_bytes_read = fread(file_content, sizeof(char), target_file_size, target_file);
-    if (file_bytes_read != target_file_size) {
-        printf("Error reading file %s\n", file_absolute_path);
+    if (file_bytes_read != (size_t)target_file_size) {
+        GIT_ERR("Error reading file %s\n", file_absolute_path);
         fclose(target_file);
         free(file_content);
-
         return NULL;
     }
 
@@ -121,19 +116,19 @@ char *read_file(const char *file_absolute_path, long *file_size) {
 }
 
 char *read_git_blob_file(const char *sha1_string, long *compressed_size) {
-    const char *file_relative_path = get_file_path(sha1_string);
-    const char *git_default_objects_path = GIT_OBJECTS_DIR;
-    const char file_absolute_path[strlen(file_relative_path) + strlen(git_default_objects_path)];
-    strcpy(file_absolute_path, git_default_objects_path);
-    strcat(file_absolute_path, "/");
-    strcat(file_absolute_path, file_relative_path);
+    char *file_relative_path = get_file_path(sha1_string);
+    if (file_relative_path == NULL) {
+        return NULL;
+    }
+
+    char file_absolute_path[strlen(file_relative_path) + strlen(GIT_OBJECTS_DIR) + 2];
+    snprintf(file_absolute_path, sizeof(file_absolute_path), "%s/%s", GIT_OBJECTS_DIR, file_relative_path);
+    free(file_relative_path);
 
     long file_size = 0;
     char *file_content = read_file(file_absolute_path, &file_size);
     if (file_content == NULL) {
-        printf("Error reading file %s\n", file_absolute_path);
-        free(file_content);
-
+        GIT_ERR("Error reading file %s\n", file_absolute_path);
         return NULL;
     }
 
@@ -142,16 +137,24 @@ char *read_git_blob_file(const char *sha1_string, long *compressed_size) {
     return file_content;
 }
 
-int write_file(const char *file_absolute_path, const char *data, size_t byte_count, char const *wm) {
+int write_file(const char *file_absolute_path, const char *data, size_t byte_count, const char *wm) {
     FILE *target_file = fopen(file_absolute_path, wm);
     if (target_file == NULL) {
-        printf("Error opening file %s\n", file_absolute_path);
-
+        GIT_ERR("Error opening file %s\n", file_absolute_path);
         return 1;
     }
 
-    fwrite(data, sizeof(char), byte_count, target_file);
-    fclose(target_file);
+    size_t written = fwrite(data, sizeof(char), byte_count, target_file);
+    if (written != byte_count) {
+        GIT_ERR("Error writing file %s: wrote %zu of %zu bytes\n", file_absolute_path, written, byte_count);
+        fclose(target_file);
+        return 1;
+    }
+
+    if (fclose(target_file) != 0) {
+        GIT_ERR("Error closing file %s\n", file_absolute_path);
+        return 1;
+    }
 
     return 0;
 }
