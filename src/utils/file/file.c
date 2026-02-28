@@ -23,6 +23,13 @@
 char *get_file_path(const char *sha1_hex) {
     const size_t sha_length = strlen(sha1_hex);
 
+    /* Reject invalid SHA-1 strings early to prevent UB from
+     * short strings and path traversal from crafted input. */
+    if (sha_length != 40) {
+        GIT_ERR("Invalid SHA-1 length: expected 40, got %zu\n", sha_length);
+        return NULL;
+    }
+
     /* Git shards objects by the first two hex digits to avoid
      * filesystem limits on directory entry counts (e.g., ext4 ~10M).
      * Result format: "ab/cdef0123..." from "abcdef0123..." */
@@ -32,30 +39,34 @@ char *get_file_path(const char *sha1_hex) {
         return NULL;
     }
 
-    strncpy(file_path, sha1_hex, 2);
+    memcpy(file_path, sha1_hex, 2);
     file_path[2] = '/';
-    strcpy(file_path + 3, sha1_hex + 2);
+    memcpy(file_path + 3, sha1_hex + 2, sha_length - 2 + 1); /* +1 for '\0' */
 
     return file_path;
 }
 
 int split_file_path(const char *file_path, char **directory, char **file_name) {
+    /* Pre-initialize so callers can safely free() on any error path */
+    *directory = NULL;
+    *file_name = NULL;
+
     const char *last_slash = strrchr(file_path, '/');
     if (last_slash == NULL) {
         GIT_ERR("File path is invalid\n");
         return 1;
     }
 
-    size_t directory_len = last_slash - file_path;
-    size_t file_name_len = strlen(file_path) - directory_len - 1;
+    size_t directory_len = (size_t)(last_slash - file_path);
+    size_t file_name_len = strlen(last_slash + 1);
 
-    *directory = (char *)malloc(directory_len + 1);
+    *directory = malloc(directory_len + 1);
     if (*directory == NULL) {
         GIT_ERR("Failed to allocate memory for directory\n");
         return 1;
     }
 
-    *file_name = (char *)malloc(file_name_len + 1);
+    *file_name = malloc(file_name_len + 1);
     if (*file_name == NULL) {
         GIT_ERR("Failed to allocate memory for file name\n");
         free(*directory);
@@ -63,10 +74,10 @@ int split_file_path(const char *file_path, char **directory, char **file_name) {
         return 1;
     }
 
-    strncpy(*directory, file_path, directory_len);
+    memcpy(*directory, file_path, directory_len);
     (*directory)[directory_len] = '\0';
 
-    strncpy(*file_name, last_slash + 1, file_name_len);
+    memcpy(*file_name, last_slash + 1, file_name_len);
     (*file_name)[file_name_len] = '\0';
 
     return 0;
@@ -86,6 +97,12 @@ char *read_file(const char *file_absolute_path, long *file_size) {
     }
 
     const long target_file_size = ftell(target_file);
+    if (target_file_size < 0) {
+        GIT_ERR("Error getting file size for %s\n", file_absolute_path);
+        fclose(target_file);
+        return NULL;
+    }
+
     char *file_content = malloc(target_file_size + 1);
     if (file_content == NULL) {
         GIT_ERR("Error allocating memory for file content\n");
@@ -121,7 +138,9 @@ char *read_git_blob_file(const char *sha1_string, long *compressed_size) {
         return NULL;
     }
 
-    char file_absolute_path[strlen(file_relative_path) + strlen(GIT_OBJECTS_DIR) + 2];
+    /* Fixed-size buffer instead of VLA — C23 makes VLAs optional,
+     * and user-controlled sha1 length could cause stack overflow. */
+    char file_absolute_path[GIT_PATH_MAX];
     snprintf(file_absolute_path, sizeof(file_absolute_path), "%s/%s", GIT_OBJECTS_DIR, file_relative_path);
     free(file_relative_path);
 
@@ -137,8 +156,8 @@ char *read_git_blob_file(const char *sha1_string, long *compressed_size) {
     return file_content;
 }
 
-int write_file(const char *file_absolute_path, const char *data, size_t byte_count, const char *wm) {
-    FILE *target_file = fopen(file_absolute_path, wm);
+int write_file(const char *file_absolute_path, const char *data, size_t byte_count, const char *mode) {
+    FILE *target_file = fopen(file_absolute_path, mode);
     if (target_file == NULL) {
         GIT_ERR("Error opening file %s\n", file_absolute_path);
         return 1;

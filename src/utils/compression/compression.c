@@ -16,10 +16,12 @@ unsigned char *decompress_data(const unsigned char *compressed_data, const unsig
     /* Start with 8x the compressed size as an initial estimate.
      * If the data was highly compressed (common for text), the buffer
      * may be too small — uncompress returns Z_BUF_ERROR in that case.
-     * We retry with doubled buffer size until it fits or a real error occurs. */
+     * We retry with doubled buffer size up to a 256 MB cap to prevent
+     * OOM exhaustion from malformed or malicious compressed input. */
     uLongf dest_size = compressed_data_size * 8;
+    const uLongf max_size = 256UL * 1024 * 1024;
 
-    while (1) {
+    while (dest_size <= max_size) {
         unsigned char *decompressed_data = malloc(dest_size);
         if (decompressed_data == NULL) {
             GIT_ERR("malloc failed\n");
@@ -42,6 +44,9 @@ unsigned char *decompress_data(const unsigned char *compressed_data, const unsig
 
         dest_size *= 2;
     }
+
+    GIT_ERR("decompress_data: exceeded maximum output size (%lu bytes)\n", max_size);
+    return NULL;
 }
 
 unsigned char *compress_data(const unsigned char *file_data, unsigned long file_data_size,

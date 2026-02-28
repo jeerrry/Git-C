@@ -129,7 +129,7 @@ static char *write_object_to_store(const char *object_data, size_t object_size) 
     char abs_file[GIT_PATH_MAX];
     snprintf(abs_dir, sizeof(abs_dir), "%s/%s", GIT_OBJECTS_DIR, dir_name);
 
-    if (is_directory_present(abs_dir) == 1 && mkdir(abs_dir, DIRECTORY_PERMISSION) == -1) {
+    if (!directory_exists(abs_dir) && mkdir(abs_dir, DIRECTORY_PERMISSION) == -1) {
         GIT_ERR("Error creating directory %s\n", dir_name);
         goto fail;
     }
@@ -180,7 +180,13 @@ static char *create_blob(const char *path) {
 
     /* snprintf(NULL, 0, ...) safely calculates the header length
      * before allocating, avoiding any fixed-size buffer guesses. */
-    size_t header_len = (size_t)snprintf(NULL, 0, "blob %ld", file_size);
+    int header_len_int = snprintf(NULL, 0, "blob %ld", file_size);
+    if (header_len_int < 0) {
+        GIT_ERR("Error formatting blob header\n");
+        free(file_content);
+        return NULL;
+    }
+    size_t header_len = (size_t)header_len_int;
     size_t total_size = header_len + 1 + file_size;
     char *blob_data = malloc(total_size);
     if (blob_data == NULL) {
@@ -237,22 +243,20 @@ int ls_tree(const char *sha1) {
     unsigned char *pos = header_end + 1;
     unsigned char *end = decompressed_file + uncompressed_size;
 
-    /* Each entry: <mode> <name>\0<20-byte binary SHA>
-     * We find the space (skip mode), then find the \0 (that's the name),
-     * print it, and jump 20 bytes past \0 to reach the next entry. */
+    /* Tree entries are packed as: <mode> <name>\0<20-byte binary SHA>
+     * with no separator between entries — the only way to find entry
+     * boundaries is by locating \0 and skipping exactly 20 bytes. */
     while (pos < end) {
-        /* Skip mode — advance past the space separator */
         unsigned char *space = memchr(pos, ' ', (size_t)(end - pos));
         if (space == NULL) break;
 
-        /* Name runs from after the space to the next null byte */
         unsigned char *name_start = space + 1;
         unsigned char *name_end = memchr(name_start, '\0', (size_t)(end - name_start));
         if (name_end == NULL) break;
 
         printf("%.*s\n", (int)(name_end - name_start), name_start);
 
-        /* Jump past the null byte and the 20-byte binary SHA */
+        if (name_end + 1 + 20 > end) break;
         pos = name_end + 1 + 20;
     }
 
@@ -267,6 +271,7 @@ typedef struct {
     char sha_hex[41];   /* 40-char hex SHA + null */
 } TreeEntry;
 
+/* Lexicographic comparator for qsort — git requires sorted tree entries. */
 static int compare_tree_entries(const void *a, const void *b) {
     return strcmp(((const TreeEntry *)a)->name, ((const TreeEntry *)b)->name);
 }
@@ -366,7 +371,12 @@ static char *write_tree_recursive(const char *dir_path) {
     }
 
     /* Build "tree <body_size>\0<packed entries>" */
-    size_t header_len = (size_t)snprintf(NULL, 0, "tree %zu", body_size);
+    int header_len_int = snprintf(NULL, 0, "tree %zu", body_size);
+    if (header_len_int < 0) {
+        GIT_ERR("Error formatting tree header\n");
+        goto cleanup;
+    }
+    size_t header_len = (size_t)header_len_int;
     size_t total_size = header_len + 1 + body_size;
     char *tree_data = malloc(total_size);
     if (tree_data == NULL) {

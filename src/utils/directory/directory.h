@@ -11,10 +11,9 @@
  * Checks whether a directory exists at the given path.
  * Uses stat() internally.
  *
- * NOTE: Return value convention is inverted from typical boolean:
- *   0 = directory exists
- *   1 = directory does not exist, path is NULL, or stat() failed
+ * @param path  Path to check.
+ * @return      1 if directory exists, 0 otherwise.
  */
-int is_directory_present(const char *path);
+int directory_exists(const char *path);
 
 #endif /* DIRECTORY_H */
