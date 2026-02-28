@@ -52,9 +52,6 @@ int object_read(const char *sha1, GitObject *out) {
 
 char *object_write(const char *object_data, size_t object_size) {
     char *str_hash = NULL;
-    char *obj_path = NULL;
-    char *dir_name = NULL;
-    char *file_name = NULL;
     unsigned char *compressed = NULL;
 
     unsigned char raw_hash[SHA_DIGEST_LENGTH];
@@ -65,26 +62,16 @@ char *object_write(const char *object_data, size_t object_size) {
         goto fail;
     }
 
-    obj_path = get_file_path(str_hash);
-    if (obj_path == NULL) {
-        GIT_ERR("Error getting object path\n");
-        goto fail;
-    }
-    if (split_file_path(obj_path, &dir_name, &file_name) == 1) {
-        GIT_ERR("Error splitting object path\n");
-        goto fail;
-    }
-
     char abs_dir[GIT_PATH_MAX];
     char abs_file[GIT_PATH_MAX];
-    snprintf(abs_dir, sizeof(abs_dir), "%s/%s", GIT_OBJECTS_DIR, dir_name);
-
-    if (!directory_exists(abs_dir) && mkdir(abs_dir, DIRECTORY_PERMISSION) == -1) {
-        GIT_ERR("Error creating directory %s\n", dir_name);
+    if (object_path(str_hash, abs_dir, sizeof(abs_dir), abs_file, sizeof(abs_file)) != 0) {
         goto fail;
     }
 
-    snprintf(abs_file, sizeof(abs_file), "%s/%s/%s", GIT_OBJECTS_DIR, dir_name, file_name);
+    if (!directory_exists(abs_dir) && mkdir(abs_dir, DIRECTORY_PERMISSION) == -1) {
+        GIT_ERR("Error creating directory %s\n", abs_dir);
+        goto fail;
+    }
 
     unsigned long compressed_size;
     compressed = compress_data((unsigned char *)object_data, object_size, &compressed_size);
@@ -98,17 +85,11 @@ char *object_write(const char *object_data, size_t object_size) {
         goto fail;
     }
 
-    free(obj_path);
-    free(dir_name);
-    free(file_name);
     free(compressed);
     return str_hash;
 
 fail:
     free(str_hash);
-    free(obj_path);
-    free(dir_name);
-    free(file_name);
     free(compressed);
     return NULL;
 }

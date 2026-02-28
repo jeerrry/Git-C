@@ -1,7 +1,7 @@
 /*
  * file.h
  *
- * File I/O utilities and path manipulation for the git object store.
+ * File I/O utilities and git object path resolution.
  * Functions that return heap-allocated memory document ownership
  * in their docstrings — callers must free returned pointers.
  */
@@ -12,14 +12,24 @@
 #include <stddef.h>
 
 /*
- * Converts a SHA-1 hex string into a git object path: "xx/xxx...".
- * Git shards objects by the first two hex digits to avoid
- * filesystem limits on directory entry counts.
+ * Resolves a SHA-1 hex hash to absolute object store paths.
  *
- * @param sha1_hex  40-character hex hash string.
- * @return          Heap-allocated path string (caller must free), or NULL.
+ * Converts e.g. "abcdef..." into:
+ *   abs_dir  = ".git/objects/ab"
+ *   abs_file = ".git/objects/ab/cdef..."
+ *
+ * Zero heap allocations — caller provides stack buffers.
+ * abs_dir may be NULL if the caller only needs the file path.
+ *
+ * @param sha_hex   40-character hex hash string.
+ * @param abs_dir   Output buffer for directory path, or NULL.
+ * @param dir_size  Size of abs_dir buffer.
+ * @param abs_file  Output buffer for full file path.
+ * @param file_size Size of abs_file buffer.
+ * @return          0 on success, 1 on invalid SHA.
  */
-char *get_file_path(const char *sha1_hex);
+int object_path(const char *sha_hex, char *abs_dir, size_t dir_size,
+                char *abs_file, size_t file_size);
 
 /*
  * Writes raw bytes to a file.
@@ -51,16 +61,5 @@ char *read_file(const char *path, long *file_size);
  * @return                Heap-allocated compressed data (caller must free), or NULL.
  */
 char *read_git_blob_file(const char *sha1_hex, long *compressed_size);
-
-/*
- * Splits a path at its last '/' into directory and filename components.
- * Both output strings are heap-allocated; caller must free both.
- *
- * @param path      Input path containing at least one '/'.
- * @param directory Output: heap-allocated directory portion (caller must free).
- * @param file_name Output: heap-allocated filename portion (caller must free).
- * @return          0 on success, 1 on invalid input or allocation failure.
- */
-int split_file_path(const char *path, char **directory, char **file_name);
 
 #endif /* FILE_H */
