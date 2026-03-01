@@ -185,6 +185,12 @@ int clone_repo(const char *url, const char *dir) {
     }
     free(want_body);
 
+    /* DEBUG: dump response info */
+    fprintf(stderr, "DEBUG pack_resp: size=%zu, first bytes:", pack_resp.size);
+    for (size_t i = 0; i < 80 && i < pack_resp.size; i++)
+        fprintf(stderr, " %02x", (unsigned char)pack_resp.data[i]);
+    fprintf(stderr, "\n");
+
     /* Step 4: Strip side-band framing to get raw packfile */
     unsigned char *pack_data;
     size_t pack_len;
