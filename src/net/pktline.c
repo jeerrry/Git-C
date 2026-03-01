@@ -96,25 +96,23 @@ int pktline_parse_head(const char *data, size_t data_len, char *sha_out) {
 int pktline_build_want(const char *sha, char **out_body, size_t *out_len) {
     /*
      * Build the request body that tells the server which objects we want.
-     * We request side-band-64k so the server wraps the packfile response
-     * in channel-framed packets (makes parsing predictable).
+     * No capabilities requested — keeps the exchange simple.
      *
      * Format:
-     *   "0041want <40-char SHA> side-band-64k\n"  ← 0x41 = 65 bytes
-     *   "0000"                                     ← flush
-     *   "0009done\n"                               ← 0x09 = 9 bytes
+     *   "0032want <40-char SHA>\n"  ← 0x32 = 50 bytes total
+     *   "0000"                      ← flush
+     *   "0009done\n"               ← 0x09 = 9 bytes total
      *
-     * Total: 65 + 4 + 9 = 78 bytes.
+     * Total: 50 + 4 + 9 = 63 bytes.
      */
-    const size_t total = 65 + 4 + 9;
+    const size_t total = 50 + 4 + 9;
     char *body = malloc(total + 1);
     if (body == NULL) {
         GIT_ERR("pktline: malloc failed\n");
         return 1;
     }
 
-    snprintf(body, total + 1,
-             "0041want %.40s side-band-64k\n00000009done\n", sha);
+    snprintf(body, total + 1, "0032want %.40s\n00000009done\n", sha);
 
     *out_body = body;
     *out_len = total;
