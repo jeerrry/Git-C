@@ -96,25 +96,91 @@ int pktline_parse_head(const char *data, size_t data_len, char *sha_out) {
 int pktline_build_want(const char *sha, char **out_body, size_t *out_len) {
     /*
      * Build the request body that tells the server which objects we want.
+     * We request side-band-64k so the server wraps the packfile response
+     * in channel-framed packets (makes parsing predictable).
      *
      * Format:
-     *   "0032want <40-char SHA>\n"    ← 0x32 = 50 bytes total
-     *   "0000"                        ← flush
-     *   "0009done\n"                  ← 0x09 = 9 bytes total
+     *   "0041want <40-char SHA> side-band-64k\n"  ← 0x41 = 65 bytes
+     *   "0000"                                     ← flush
+     *   "0009done\n"                               ← 0x09 = 9 bytes
      *
-     * Total: 50 + 4 + 9 = 63 bytes.
+     * Total: 65 + 4 + 9 = 78 bytes.
      */
-    const size_t total = 50 + 4 + 9;  /* want line + flush + done line */
-    char *body = malloc(total + 1);    /* +1 for safety NUL */
+    const size_t total = 65 + 4 + 9;
+    char *body = malloc(total + 1);
     if (body == NULL) {
         GIT_ERR("pktline: malloc failed\n");
         return 1;
     }
 
-    /* Build want line: "0032want <sha>\n" */
-    snprintf(body, total + 1, "0032want %.40s\n00000009done\n", sha);
+    snprintf(body, total + 1,
+             "0041want %.40s side-band-64k\n00000009done\n", sha);
 
     *out_body = body;
     *out_len = total;
+    return 0;
+}
+
+int pktline_strip_sideband(const char *data, size_t data_len,
+                           unsigned char **pack_out, size_t *pack_len) {
+    /*
+     * Walk through pkt-line packets, extracting channel 1 (packfile) data.
+     *
+     * Response structure after upload-pack:
+     *   0008NAK\n                 ← regular pkt-line (no channel byte)
+     *   XXXX\x01<pack chunk>     ← side-band channel 1 = packfile data
+     *   XXXX\x02<progress text>  ← side-band channel 2 = progress (skip)
+     *   0000                     ← flush
+     *
+     * NAK starts with 'N' (0x4E), not \x01-\x03, so it's skipped
+     * naturally by the channel check.
+     */
+    unsigned char *out = NULL;
+    size_t out_size = 0;
+    size_t pos = 0;
+
+    while (pos + 4 <= data_len) {
+        int pkt_len = hex4_to_int(data + pos);
+
+        /* Flush = end of response */
+        if (pkt_len == 0) break;
+
+        if (pkt_len < 0 || pkt_len < 4 || pos + (size_t)pkt_len > data_len) {
+            GIT_ERR("pktline: bad sideband packet at offset %zu\n", pos);
+            free(out);
+            return 1;
+        }
+
+        /* Payload starts after the 4-byte hex prefix.
+         * The first byte of payload is the channel indicator. */
+        if (pkt_len > 5 && (unsigned char)data[pos + 4] == 1) {
+            /* Channel 1: packfile data — skip the channel byte */
+            const char *chunk = data + pos + 5;
+            size_t chunk_len = (size_t)pkt_len - 5;
+
+            unsigned char *grown = realloc(out, out_size + chunk_len);
+            if (grown == NULL) {
+                GIT_ERR("pktline: realloc failed\n");
+                free(out);
+                return 1;
+            }
+            out = grown;
+            memcpy(out + out_size, chunk, chunk_len);
+            out_size += chunk_len;
+        }
+        /* Channel 2 (progress) and channel 3 (error) are silently skipped.
+         * Non-sideband lines like NAK are also skipped. */
+
+        pos += (size_t)pkt_len;
+    }
+
+    if (out_size == 0) {
+        GIT_ERR("pktline: no packfile data found in response\n");
+        free(out);
+        return 1;
+    }
+
+    *pack_out = out;
+    *pack_len = out_size;
     return 0;
 }

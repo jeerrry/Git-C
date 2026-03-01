@@ -35,8 +35,8 @@ int pktline_parse_head(const char *data, size_t data_len, char *sha_out);
 /*
  * Builds a "want" request body for git-upload-pack.
  *
- * Produces the pkt-line encoded request:
- *   0032want <40-char SHA>\n
+ * Produces the pkt-line encoded request with side-band-64k capability:
+ *   0041want <40-char SHA> side-band-64k\n
  *   00000009done\n
  *
  * The caller must free() the returned buffer.
@@ -47,5 +47,22 @@ int pktline_parse_head(const char *data, size_t data_len, char *sha_out);
  * @return          0 on success, 1 on failure.
  */
 int pktline_build_want(const char *sha, char **out_body, size_t *out_len);
+
+/*
+ * Strips side-band-64k framing from an upload-pack response.
+ *
+ * The response is pkt-line encoded with a channel byte per packet:
+ *   \x01 = packfile data, \x02 = progress text, \x03 = error.
+ * This function extracts only channel 1 payloads and concatenates
+ * them into a single buffer containing the raw packfile.
+ *
+ * @param data      Raw response body from http_post_pack().
+ * @param data_len  Byte count of data.
+ * @param pack_out  Output: heap-allocated raw packfile (caller must free).
+ * @param pack_len  Output: byte count of the packfile.
+ * @return          0 on success, 1 on failure.
+ */
+int pktline_strip_sideband(const char *data, size_t data_len,
+                           unsigned char **pack_out, size_t *pack_len);
 
 #endif /* PKTLINE_H */
