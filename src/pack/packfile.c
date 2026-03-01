@@ -66,17 +66,20 @@ static uint32_t read_uint32_be(const unsigned char *p) {
  *   continuation=1, type=(001)=commit, size_low=0010=2
  *   Next byte needed for more size bits.
  */
-static void read_type_and_size(const unsigned char *data, size_t *pos,
-                               int *type, size_t *size) {
+static int read_type_and_size(const unsigned char *data, size_t len, size_t *pos,
+                              int *type, size_t *size) {
+    if (*pos >= len) return 1;
     unsigned char byte = data[(*pos)++];
     *type = (byte >> 4) & 0x07;
     *size = byte & 0x0F;
     int shift = 4;
     while (byte & 0x80) {
+        if (*pos >= len) return 1;
         byte = data[(*pos)++];
         *size |= (size_t)(byte & 0x7F) << shift;
         shift += 7;
     }
+    return 0;
 }
 
 /*
@@ -206,19 +209,21 @@ static unsigned char *apply_delta(const unsigned char *base, size_t base_len,
              *
              * Missing bytes default to 0. Size of 0 means 0x10000. */
             size_t offset = 0, size = 0;
-            if (cmd & 0x01) offset  = delta[pos++];
-            if (cmd & 0x02) offset |= (size_t)delta[pos++] << 8;
-            if (cmd & 0x04) offset |= (size_t)delta[pos++] << 16;
-            if (cmd & 0x08) offset |= (size_t)delta[pos++] << 24;
-            if (cmd & 0x10) size  = delta[pos++];
-            if (cmd & 0x20) size |= (size_t)delta[pos++] << 8;
-            if (cmd & 0x40) size |= (size_t)delta[pos++] << 16;
+            if (cmd & 0x01) { if (pos >= delta_len) goto corrupt; offset  = delta[pos++]; }
+            if (cmd & 0x02) { if (pos >= delta_len) goto corrupt; offset |= (size_t)delta[pos++] << 8; }
+            if (cmd & 0x04) { if (pos >= delta_len) goto corrupt; offset |= (size_t)delta[pos++] << 16; }
+            if (cmd & 0x08) { if (pos >= delta_len) goto corrupt; offset |= (size_t)delta[pos++] << 24; }
+            if (cmd & 0x10) { if (pos >= delta_len) goto corrupt; size  = delta[pos++]; }
+            if (cmd & 0x20) { if (pos >= delta_len) goto corrupt; size |= (size_t)delta[pos++] << 8; }
+            if (cmd & 0x40) { if (pos >= delta_len) goto corrupt; size |= (size_t)delta[pos++] << 16; }
             if (size == 0) size = 0x10000;
 
+            if (offset + size > base_len || rpos + size > tgt_size) goto corrupt;
             memcpy(result + rpos, base + offset, size);
             rpos += size;
         } else if (cmd > 0) {
             /* INSERT instruction: copy literal bytes from delta stream */
+            if (pos + cmd > delta_len || rpos + cmd > tgt_size) goto corrupt;
             memcpy(result + rpos, delta + pos, cmd);
             pos += cmd;
             rpos += cmd;
@@ -228,6 +233,11 @@ static unsigned char *apply_delta(const unsigned char *base, size_t base_len,
 
     *out_len = rpos;
     return result;
+
+corrupt:
+    GIT_ERR("packfile: corrupt delta instruction stream\n");
+    free(result);
+    return NULL;
 }
 
 /*
@@ -272,11 +282,18 @@ int packfile_parse(const unsigned char *data, size_t len) {
     for (uint32_t i = 0; i < obj_count; i++) {
         int type;
         size_t size;
-        read_type_and_size(data, &pos, &type, &size);
+        if (read_type_and_size(data, len, &pos, &type, &size) != 0) {
+            GIT_ERR("packfile: truncated object header at index %u\n", i);
+            return 1;
+        }
 
         /* For REF_DELTA: read the 20-byte binary SHA of the base object */
         unsigned char base_sha_bin[20];
         if (type == OBJ_REF_DELTA) {
+            if (pos + 20 > len) {
+                GIT_ERR("packfile: truncated REF_DELTA SHA at index %u\n", i);
+                return 1;
+            }
             memcpy(base_sha_bin, data + pos, 20);
             pos += 20;
         }
@@ -318,8 +335,15 @@ int packfile_parse(const unsigned char *data, size_t len) {
 
             /* Parse type from the raw header: "type size\0..." */
             const char *space = memchr(base_obj.raw, ' ', 32);
+            if (space == NULL) {
+                GIT_ERR("packfile: malformed base object header\n");
+                free(body);
+                free(base_obj.raw);
+                return 1;
+            }
             size_t tlen = (size_t)(space - (const char *)base_obj.raw);
             char base_type[16];
+            if (tlen >= sizeof(base_type)) tlen = sizeof(base_type) - 1;
             memcpy(base_type, base_obj.raw, tlen);
             base_type[tlen] = '\0';
 

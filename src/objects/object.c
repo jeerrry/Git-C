@@ -8,6 +8,7 @@
 
 #include <sys/stat.h>
 
+#include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,7 +18,6 @@
 #include "../utils/file/file.h"
 #include "../utils/compression/compression.h"
 #include "../utils/string/string.h"
-#include "../utils/directory/directory.h"
 #include "object.h"
 
 int object_read(const char *sha1, GitObject *out) {
@@ -46,7 +46,7 @@ int object_read(const char *sha1, GitObject *out) {
 
     out->raw = raw;
     out->body = header_end + 1;
-    out->body_size = raw_size - (unsigned long)(out->body - raw);
+    out->body_size = (size_t)(raw_size - (unsigned long)(out->body - raw));
     return 0;
 }
 
@@ -68,7 +68,7 @@ char *object_write(const char *object_data, size_t object_size) {
         goto fail;
     }
 
-    if (!directory_exists(abs_dir) && mkdir(abs_dir, DIRECTORY_PERMISSION) == -1) {
+    if (mkdir(abs_dir, DIRECTORY_PERMISSION) == -1 && errno != EEXIST) {
         GIT_ERR("Error creating directory %s\n", abs_dir);
         goto fail;
     }

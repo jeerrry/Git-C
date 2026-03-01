@@ -14,7 +14,7 @@
 /* Parsed git object — body points into raw, so only raw needs freeing. */
 typedef struct {
     unsigned char *body;       /* object content (past the header + \0) */
-    unsigned long  body_size;  /* byte count of body */
+    size_t         body_size;  /* byte count of body */
     unsigned char *raw;        /* full decompressed buffer (caller frees) */
 } GitObject;
 

@@ -12,6 +12,7 @@
 
 int object_path(const char *sha_hex, char *abs_dir, size_t dir_size,
                 char *abs_file, size_t file_size) {
+    if (sha_hex == NULL || abs_file == NULL) return 1;
     if (strlen(sha_hex) != 40) {
         GIT_ERR("Invalid SHA-1 length: expected 40, got %zu\n", strlen(sha_hex));
         return 1;

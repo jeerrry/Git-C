@@ -13,13 +13,20 @@
 
 unsigned char *decompress_data(const unsigned char *compressed_data, const unsigned long compressed_data_size,
                                unsigned long *decompressed_data_size) {
+    if (compressed_data == NULL || compressed_data_size == 0 || decompressed_data_size == NULL) {
+        return NULL;
+    }
+
     /* Start with 8x the compressed size as an initial estimate.
      * If the data was highly compressed (common for text), the buffer
      * may be too small — uncompress returns Z_BUF_ERROR in that case.
      * We retry with doubled buffer size up to a 256 MB cap to prevent
      * OOM exhaustion from malformed or malicious compressed input. */
-    uLongf dest_size = compressed_data_size * 8;
     const uLongf max_size = 256UL * 1024 * 1024;
+    uLongf dest_size = compressed_data_size * 8;
+    if (dest_size / 8 != compressed_data_size || dest_size > max_size) {
+        dest_size = max_size;
+    }
 
     while (dest_size <= max_size) {
         unsigned char *decompressed_data = malloc(dest_size);

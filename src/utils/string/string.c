@@ -11,6 +11,8 @@
 #include "../../constants.h"
 
 char *hex_to_string(const unsigned char *buffer, size_t buffer_size) {
+    if (buffer == NULL || buffer_size == 0) return NULL;
+
     char *str = malloc(buffer_size * 2 + 1);
     if (str == NULL) {
         GIT_ERR("Failed to allocate memory for hex string\n");
@@ -18,7 +20,7 @@ char *hex_to_string(const unsigned char *buffer, size_t buffer_size) {
     }
 
     for (size_t i = 0; i < buffer_size; i++) {
-        sprintf(str + (i * 2), "%02x", buffer[i]);
+        snprintf(str + (i * 2), 3, "%02x", buffer[i]);
     }
 
     str[buffer_size * 2] = '\0';
@@ -26,6 +28,8 @@ char *hex_to_string(const unsigned char *buffer, size_t buffer_size) {
 }
 
 unsigned char *hex_string_to_bytes(const char *hex_str, size_t *out_len) {
+    if (hex_str == NULL || out_len == NULL) return NULL;
+
     size_t hex_len = strlen(hex_str);
 
     /* Odd-length hex strings would silently lose the last nibble */

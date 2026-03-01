@@ -76,7 +76,7 @@ static int checkout_tree(const char *tree_sha, const char *dir) {
     while (pos < end) {
         /* Parse mode */
         unsigned char *space = memchr(pos, ' ', (size_t)(end - pos));
-        if (space == NULL) break;
+        if (space == NULL) { free(obj.raw); return 1; }
         char mode[16];
         size_t mode_len = (size_t)(space - pos);
         memcpy(mode, pos, mode_len);
@@ -85,14 +85,19 @@ static int checkout_tree(const char *tree_sha, const char *dir) {
         /* Parse name */
         unsigned char *name_start = space + 1;
         unsigned char *name_end = memchr(name_start, '\0', (size_t)(end - name_start));
-        if (name_end == NULL) break;
-        char name[256];
+        if (name_end == NULL) { free(obj.raw); return 1; }
         size_t name_len = (size_t)(name_end - name_start);
+        if (name_len >= GIT_PATH_MAX - 1) {
+            GIT_ERR("clone: entry name too long (%zu bytes)\n", name_len);
+            free(obj.raw);
+            return 1;
+        }
+        char name[GIT_PATH_MAX];
         memcpy(name, name_start, name_len);
         name[name_len] = '\0';
 
         /* 20-byte binary SHA follows the NUL */
-        if (name_end + 1 + 20 > end) break;
+        if (name_end + 1 + 20 > end) { free(obj.raw); return 1; }
         unsigned char *sha_bin = name_end + 1;
         char *sha_hex = hex_to_string(sha_bin, 20);
         if (sha_hex == NULL) { free(obj.raw); return 1; }
@@ -142,6 +147,13 @@ static int checkout_tree(const char *tree_sha, const char *dir) {
 }
 
 int clone_repo(const char *url, const char *dir) {
+    int result = 1;
+    char *want_body = NULL;
+    unsigned char *pack_data = NULL;
+    HttpResponse refs_resp = {0};
+    HttpResponse pack_resp = {0};
+    int changed_dir = 0;
+
     /* Step 1: Create target directory and init .git/ inside it */
     if (mkdir(dir, DIRECTORY_PERMISSION) == -1) {
         GIT_ERR("clone: failed to create directory %s\n", dir);
@@ -158,60 +170,55 @@ int clone_repo(const char *url, const char *dir) {
         GIT_ERR("clone: chdir to %s failed\n", dir);
         return 1;
     }
+    changed_dir = 1;
 
     /* Initialize .git/ structure */
-    if (init_git() != 0) return 1;
+    if (init_git() != 0) goto cleanup;
 
     /* Step 2: Discover refs — get HEAD SHA */
-    HttpResponse refs_resp;
-    if (http_get_refs(url, &refs_resp) != 0) return 1;
+    if (http_get_refs(url, &refs_resp) != 0) goto cleanup;
 
     char head_sha[41];
-    if (pktline_parse_head(refs_resp.data, refs_resp.size, head_sha) != 0) {
-        http_response_free(&refs_resp);
-        return 1;
-    }
+    if (pktline_parse_head(refs_resp.data, refs_resp.size, head_sha) != 0) goto cleanup;
     http_response_free(&refs_resp);
+    refs_resp = (HttpResponse){0};
 
     /* Step 3: Build "want" request and fetch the packfile */
-    char *want_body;
     size_t want_len;
-    if (pktline_build_want(head_sha, &want_body, &want_len) != 0) return 1;
+    if (pktline_build_want(head_sha, &want_body, &want_len) != 0) goto cleanup;
 
-    HttpResponse pack_resp;
-    if (http_post_pack(url, want_body, want_len, &pack_resp) != 0) {
-        free(want_body);
-        return 1;
-    }
+    if (http_post_pack(url, want_body, want_len, &pack_resp) != 0) goto cleanup;
     free(want_body);
+    want_body = NULL;
 
     /* Step 4: Extract raw packfile from response */
-    unsigned char *pack_data;
     size_t pack_len;
     if (pktline_strip_sideband(pack_resp.data, pack_resp.size,
-                               &pack_data, &pack_len) != 0) {
-        http_response_free(&pack_resp);
-        return 1;
-    }
+                               &pack_data, &pack_len) != 0) goto cleanup;
     http_response_free(&pack_resp);
+    pack_resp = (HttpResponse){0};
 
     /* Step 5: Parse packfile — writes all objects to .git/objects/ */
-    if (packfile_parse(pack_data, pack_len) != 0) {
-        free(pack_data);
-        return 1;
-    }
+    if (packfile_parse(pack_data, pack_len) != 0) goto cleanup;
     free(pack_data);
+    pack_data = NULL;
 
     /* Step 6: Checkout — commit → tree → working directory */
     char tree_sha[41];
-    if (get_tree_sha(head_sha, tree_sha) != 0) return 1;
-    if (checkout_tree(tree_sha, ".") != 0) return 1;
+    if (get_tree_sha(head_sha, tree_sha) != 0) goto cleanup;
+    if (checkout_tree(tree_sha, ".") != 0) goto cleanup;
 
-    /* Restore original directory */
-    if (chdir(original_dir) != 0) {
-        GIT_ERR("clone: chdir back to %s failed\n", original_dir);
-        return 1;
+    result = 0;
+
+cleanup:
+    free(want_body);
+    free(pack_data);
+    http_response_free(&refs_resp);
+    http_response_free(&pack_resp);
+    if (changed_dir) {
+        if (chdir(original_dir) != 0) {
+            GIT_ERR("clone: chdir back to %s failed\n", original_dir);
+        }
     }
-
-    return 0;
+    return result;
 }

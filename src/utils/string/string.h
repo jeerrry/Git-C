@@ -4,8 +4,8 @@
  * Hex conversion utilities for SHA-1 hashes.
  */
 
-#ifndef STRING_H
-#define STRING_H
+#ifndef GIT_STRING_H
+#define GIT_STRING_H
 
 #include <stddef.h>
 
@@ -31,4 +31,4 @@ char *hex_to_string(const unsigned char *buffer, size_t buffer_size);
  */
 unsigned char *hex_string_to_bytes(const char *hex_str, size_t *out_len);
 
-#endif /* STRING_H */
+#endif /* GIT_STRING_H */

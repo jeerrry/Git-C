@@ -6,8 +6,8 @@
  * in their docstrings — callers must free returned pointers.
  */
 
-#ifndef FILE_H
-#define FILE_H
+#ifndef GIT_FILE_H
+#define GIT_FILE_H
 
 #include <stddef.h>
 
@@ -62,4 +62,4 @@ char *read_file(const char *path, long *file_size);
  */
 char *read_git_blob_file(const char *sha1_hex, long *compressed_size);
 
-#endif /* FILE_H */
+#endif /* GIT_FILE_H */
