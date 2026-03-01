@@ -178,12 +178,6 @@ int clone_repo(const char *url, const char *dir) {
     size_t want_len;
     if (pktline_build_want(head_sha, &want_body, &want_len) != 0) return 1;
 
-    fprintf(stderr, "DEBUG HEAD SHA: %s\n", head_sha);
-    fprintf(stderr, "DEBUG want body (%zu bytes): ", want_len);
-    for (size_t i = 0; i < want_len; i++)
-        fprintf(stderr, "%c", (want_body[i] >= 32 && want_body[i] < 127) ? want_body[i] : '.');
-    fprintf(stderr, "\n");
-
     HttpResponse pack_resp;
     if (http_post_pack(url, want_body, want_len, &pack_resp) != 0) {
         free(want_body);
@@ -191,13 +185,7 @@ int clone_repo(const char *url, const char *dir) {
     }
     free(want_body);
 
-    /* DEBUG: dump response info */
-    fprintf(stderr, "DEBUG pack_resp: size=%zu, first bytes:", pack_resp.size);
-    for (size_t i = 0; i < 80 && i < pack_resp.size; i++)
-        fprintf(stderr, " %02x", (unsigned char)pack_resp.data[i]);
-    fprintf(stderr, "\n");
-
-    /* Step 4: Strip side-band framing to get raw packfile */
+    /* Step 4: Extract raw packfile from response */
     unsigned char *pack_data;
     size_t pack_len;
     if (pktline_strip_sideband(pack_resp.data, pack_resp.size,

@@ -87,7 +87,6 @@ static int perform_and_cleanup(CURL *curl) {
 
     long http_code;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
-    fprintf(stderr, "DEBUG HTTP response code: %ld\n", http_code);
     curl_easy_cleanup(curl);
 
     if (http_code != 200) {
@@ -136,9 +135,6 @@ int http_post_pack(const char *url, const char *body, size_t body_len, HttpRespo
     struct curl_slist *headers = NULL;
     headers = curl_slist_append(headers, "Content-Type: application/x-git-upload-pack-request");
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
-    /* DEBUG: verbose curl output to see full HTTP exchange */
-    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
 
     int result = perform_and_cleanup(curl);
     curl_slist_free_all(headers);
