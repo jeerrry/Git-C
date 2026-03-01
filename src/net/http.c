@@ -87,6 +87,7 @@ static int perform_and_cleanup(CURL *curl) {
 
     long http_code;
     curl_easy_getinfo(curl, CURLINFO_RESPONSE_CODE, &http_code);
+    fprintf(stderr, "DEBUG HTTP response code: %ld\n", http_code);
     curl_easy_cleanup(curl);
 
     if (http_code != 200) {

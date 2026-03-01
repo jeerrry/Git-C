@@ -178,6 +178,12 @@ int clone_repo(const char *url, const char *dir) {
     size_t want_len;
     if (pktline_build_want(head_sha, &want_body, &want_len) != 0) return 1;
 
+    fprintf(stderr, "DEBUG HEAD SHA: %s\n", head_sha);
+    fprintf(stderr, "DEBUG want body (%zu bytes): ", want_len);
+    for (size_t i = 0; i < want_len; i++)
+        fprintf(stderr, "%c", (want_body[i] >= 32 && want_body[i] < 127) ? want_body[i] : '.');
+    fprintf(stderr, "\n");
+
     HttpResponse pack_resp;
     if (http_post_pack(url, want_body, want_len, &pack_resp) != 0) {
         free(want_body);
