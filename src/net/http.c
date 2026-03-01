@@ -128,6 +128,9 @@ int http_post_pack(const char *url, const char *body, size_t body_len, HttpRespo
     curl_easy_setopt(curl, CURLOPT_POST, 1L);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
     curl_easy_setopt(curl, CURLOPT_POSTFIELDSIZE, (long)body_len);
+    /* Keep POST method on redirects — by default, libcurl downgrades
+     * POST to GET on 301/302 redirects, which gives an empty body. */
+    curl_easy_setopt(curl, CURLOPT_POSTREDIR, CURL_REDIR_POST_ALL);
 
     /* Git protocol requires this specific Content-Type */
     struct curl_slist *headers = NULL;
