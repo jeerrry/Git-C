@@ -37,5 +37,8 @@ else()
     target_link_libraries(git ZLIB::ZLIB)
 
     find_package(OpenSSL REQUIRED)
-    target_link_libraries(git OpenSSL::Crypto) # Link OpenSSL on non-Windows systems
+    target_link_libraries(git OpenSSL::Crypto)
+
+    find_package(CURL REQUIRED)
+    target_link_libraries(git CURL::libcurl)
 endif()
