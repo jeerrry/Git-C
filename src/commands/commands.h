@@ -72,4 +72,17 @@ int write_tree(void);
  */
 int commit_tree(const char *tree_sha, const char *parent_sha, const char *message);
 
+/*
+ * Clones a remote repository via the smart HTTP protocol.
+ *
+ * Creates the target directory, initializes .git/, fetches all objects
+ * from the remote, and checks out the HEAD commit's tree into the
+ * working directory.
+ *
+ * @param url  Repository URL (e.g. "https://github.com/user/repo/").
+ * @param dir  Target directory to clone into.
+ * @return     0 on success, 1 on failure.
+ */
+int clone_repo(const char *url, const char *dir);
+
 #endif /* COMMANDS_H */
