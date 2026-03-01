@@ -124,16 +124,15 @@ int pktline_build_want(const char *sha, char **out_body, size_t *out_len) {
 int pktline_strip_sideband(const char *data, size_t data_len,
                            unsigned char **pack_out, size_t *pack_len) {
     /*
-     * Walk through pkt-line packets, extracting channel 1 (packfile) data.
+     * Extract the raw packfile from an upload-pack response.
      *
-     * Response structure after upload-pack:
-     *   0008NAK\n                 ← regular pkt-line (no channel byte)
-     *   XXXX\x01<pack chunk>     ← side-band channel 1 = packfile data
-     *   XXXX\x02<progress text>  ← side-band channel 2 = progress (skip)
-     *   0000                     ← flush
+     * Strategy 1: Walk pkt-line packets and extract channel 1 data.
+     *   Flush packets ("0000") between NAK and the side-band data
+     *   are skipped (not treated as terminators).
      *
-     * NAK starts with 'N' (0x4E), not \x01-\x03, so it's skipped
-     * naturally by the channel check.
+     * Strategy 2 (fallback): If no side-band data is found, scan
+     *   for the "PACK" magic directly — handles servers that send
+     *   the packfile as raw bytes after NAK.
      */
     unsigned char *out = NULL;
     size_t out_size = 0;
@@ -142,14 +141,17 @@ int pktline_strip_sideband(const char *data, size_t data_len,
     while (pos + 4 <= data_len) {
         int pkt_len = hex4_to_int(data + pos);
 
-        /* Flush = end of response */
-        if (pkt_len == 0) break;
+        /* Not valid pkt-line data — stop scanning */
+        if (pkt_len < 0) break;
 
-        if (pkt_len < 0 || pkt_len < 4 || pos + (size_t)pkt_len > data_len) {
-            GIT_ERR("pktline: bad sideband packet at offset %zu\n", pos);
-            free(out);
-            return 1;
+        /* Flush packet — skip it and keep looking.
+         * There may be a flush between NAK and the side-band data. */
+        if (pkt_len == 0) {
+            pos += 4;
+            continue;
         }
+
+        if (pkt_len < 4 || pos + (size_t)pkt_len > data_len) break;
 
         /* Payload starts after the 4-byte hex prefix.
          * The first byte of payload is the channel indicator. */
@@ -174,13 +176,30 @@ int pktline_strip_sideband(const char *data, size_t data_len,
         pos += (size_t)pkt_len;
     }
 
-    if (out_size == 0) {
-        GIT_ERR("pktline: no packfile data found in response\n");
-        free(out);
-        return 1;
+    if (out_size > 0) {
+        *pack_out = out;
+        *pack_len = out_size;
+        return 0;
+    }
+    free(out);
+
+    /* Fallback: server sent raw PACK bytes (no side-band framing).
+     * Scan for the "PACK" magic and copy everything from there. */
+    for (size_t i = 0; i + 4 <= data_len; i++) {
+        if (memcmp(data + i, "PACK", 4) == 0) {
+            size_t raw_len = data_len - i;
+            unsigned char *raw = malloc(raw_len);
+            if (raw == NULL) {
+                GIT_ERR("pktline: malloc failed\n");
+                return 1;
+            }
+            memcpy(raw, data + i, raw_len);
+            *pack_out = raw;
+            *pack_len = raw_len;
+            return 0;
+        }
     }
 
-    *pack_out = out;
-    *pack_len = out_size;
-    return 0;
+    GIT_ERR("pktline: no packfile data found in response\n");
+    return 1;
 }
