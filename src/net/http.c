@@ -137,6 +137,9 @@ int http_post_pack(const char *url, const char *body, size_t body_len, HttpRespo
     headers = curl_slist_append(headers, "Content-Type: application/x-git-upload-pack-request");
     curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
+    /* DEBUG: verbose curl output to see full HTTP exchange */
+    curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L);
+
     int result = perform_and_cleanup(curl);
     curl_slist_free_all(headers);
     return result;
